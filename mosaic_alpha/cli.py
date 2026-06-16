@@ -357,5 +357,177 @@ def run_news_sector(
     console.print(f"[green]Report written to[/green] {report_path}")
 
 
+@app.command("run-backtest")
+def run_backtest_cmd(
+    experiment: str = typer.Option(
+        "news-sector",
+        "--experiment",
+        help="Which experiment to run before backtesting. Only 'news-sector' is supported.",
+    ),
+    start: str = typer.Option("2020-01-01", help="Start date (YYYY-MM-DD)."),
+    end: str = typer.Option("2024-12-31", help="End date (YYYY-MM-DD)."),
+    ridge_alpha: float = typer.Option(1.0, help="Ridge regularisation strength."),
+    universe_config: Path = typer.Option(
+        Path("configs/universe.yaml"),
+        help="Path to universe YAML config.",
+    ),
+    macro_config: Path = typer.Option(
+        Path("configs/macro.yaml"),
+        help="Path to macro YAML config.",
+    ),
+    gdelt_config: Path = typer.Option(
+        Path("configs/gdelt.yaml"),
+        help="Path to GDELT sector keyword YAML config.",
+    ),
+    offline_sample: bool = typer.Option(
+        False,
+        "--offline-sample",
+        help="Use synthetic news counts instead of live GDELT (no network calls).",
+    ),
+    sectors: str = typer.Option(
+        "",
+        "--sectors",
+        help="Comma-separated sector tickers to include, e.g. XLE,XLK.",
+    ),
+    sleep_seconds: float = typer.Option(
+        10.0,
+        "--sleep-seconds",
+        help="Seconds between live GDELT requests.",
+    ),
+    force_refresh: bool = typer.Option(
+        False,
+        "--force-refresh",
+        help="Ignore GDELT cache and re-download.",
+    ),
+    cost_bps: float = typer.Option(
+        5.0,
+        "--cost-bps",
+        help="Round-trip transaction cost in basis points applied to one-way turnover.",
+    ),
+    quantile: float = typer.Option(
+        0.25,
+        "--quantile",
+        help="Fraction of tickers in each leg of the L/S portfolio.",
+    ),
+    horizon: int = typer.Option(
+        5,
+        "--horizon",
+        help="Rebalance horizon in trading days (should match the label horizon).",
+    ),
+    report_path: Path = typer.Option(
+        Path("reports/generated/backtest_news_sector.md"),
+        help="Output path for the backtest Markdown report.",
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging."),
+) -> None:
+    """Run the news-sector experiment then backtest the price+macro+news signal.
+
+    Steps:
+    1. Run the 4-way news-sector experiment to generate walk-forward predictions.
+    2. Extract pooled price+macro+news predictions (pmn_fwd_ret_<horizon>).
+    3. Build a dollar-neutral L/S sector portfolio with transaction costs.
+    4. Write a performance report to --report-path.
+
+    Quick start (no network needed):
+        mosaic run-backtest --offline-sample --start 2020-01-01 --end 2024-12-31
+    """
+    if experiment != "news-sector":
+        console.print(f"[red]Unknown experiment: {experiment!r}. Only 'news-sector' is supported.[/red]")
+        raise SystemExit(1)
+
+    logging.basicConfig(
+        level=logging.DEBUG if verbose else logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
+    from mosaic_alpha.research.backtest import render_report as bt_render, run_backtest
+    from mosaic_alpha.research.news_sector_baseline import run_news_sector_baseline
+
+    sectors_list = [s.strip() for s in sectors.split(",") if s.strip()] or None
+    mode_label = "[yellow]SAMPLE DATA[/yellow]" if offline_sample else "[green]live GDELT[/green]"
+
+    console.print(
+        f"[bold cyan]MosaicAlpha Backtest[/bold cyan] | {experiment} | "
+        f"[dim]{start} to {end}[/dim] | mode: {mode_label}"
+    )
+
+    if offline_sample:
+        console.print(
+            "[yellow]WARNING: --offline-sample active. "
+            "Backtest news signal is based on synthetic data.[/yellow]"
+        )
+
+    # ── Step 1: run the news-sector experiment ────────────────────────────────
+    console.print("[dim]Running 4-way experiment to generate walk-forward predictions...[/dim]")
+    ns_result = run_news_sector_baseline(
+        start=start,
+        end=end,
+        universe_config=universe_config,
+        macro_config=macro_config,
+        gdelt_config=gdelt_config,
+        ridge_alpha=ridge_alpha,
+        gdelt_sleep_secs=sleep_seconds,
+        offline_sample=offline_sample,
+        sectors=sectors_list,
+        force_refresh=force_refresh,
+    )
+
+    if ns_result.pooled_predictions.empty:
+        console.print("[red]No pooled predictions returned from the experiment. Cannot run backtest.[/red]")
+        raise SystemExit(1)
+
+    # ── Step 2: backtest the pmn signal ───────────────────────────────────────
+    score_col = f"pmn_fwd_ret_{horizon}"
+    label_col = f"fwd_ret_{horizon}"
+
+    if score_col not in ns_result.pooled_predictions.columns:
+        available = [c for c in ns_result.pooled_predictions.columns if c.startswith("pmn_")]
+        console.print(
+            f"[red]Score column {score_col!r} not found. Available: {available}[/red]"
+        )
+        raise SystemExit(1)
+
+    console.print(
+        f"[dim]Running backtest: score={score_col}, label={label_col}, "
+        f"quantile={quantile:.0%}, cost={cost_bps:.1f}bps...[/dim]"
+    )
+    bt_result = run_backtest(
+        ns_result.pooled_predictions,
+        score_col=score_col,
+        label_col=label_col,
+        quantile=quantile,
+        cost_bps=cost_bps,
+        horizon=horizon,
+    )
+
+    # ── Step 3: print summary table ───────────────────────────────────────────
+    table = Table(title="Backtest Performance Summary", show_lines=True)
+    table.add_column("Metric", style="bold")
+    table.add_column("Gross", justify="right")
+    table.add_column("Net", justify="right")
+
+    def _pct(v: float) -> str:
+        import math
+        return f"{v*100:+.2f}%" if not math.isnan(v) else "N/A"
+
+    def _f2(v: float) -> str:
+        import math
+        return f"{v:+.2f}" if not math.isnan(v) else "N/A"
+
+    table.add_row("Ann. Return", _pct(bt_result.ann_gross_return), _pct(bt_result.ann_net_return))
+    table.add_row("Ann. Volatility", _pct(bt_result.ann_vol_gross), _pct(bt_result.ann_vol_net))
+    table.add_row("Sharpe Ratio", _f2(bt_result.sharpe_gross), _f2(bt_result.sharpe_net))
+    table.add_row("Max Drawdown", _pct(bt_result.max_drawdown_gross), _pct(bt_result.max_drawdown_net))
+    table.add_row("Hit Rate", f"{bt_result.hit_rate:.3f}", "--")
+    table.add_row("Avg Turnover", f"{bt_result.avg_turnover:.3f}", "--")
+    table.add_row("Periods", str(bt_result.n_periods), "--")
+
+    console.print(table)
+
+    # ── Step 4: write report ──────────────────────────────────────────────────
+    bt_render(bt_result, report_path, data_mode=ns_result.data_mode)
+    console.print(f"[green]Backtest report written to[/green] {report_path}")
+
+
 if __name__ == "__main__":
     app()

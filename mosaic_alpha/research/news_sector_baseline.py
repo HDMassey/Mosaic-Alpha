@@ -94,6 +94,10 @@ class NewsSectorResult:
     n_folds: int
     data_mode: str = DATA_MODE_LIVE   # DATA_MODE_LIVE or DATA_MODE_SAMPLE
     comparisons: list[FourWayComparison] = field(default_factory=list)
+    # Pooled predictions from the price+macro+news model across all test folds.
+    # Flat DataFrame: date, ticker, pmn_fwd_ret_1/5/20, fwd_ret_1/5/20.
+    # Used by the backtest module.  Empty DataFrame if not populated.
+    pooled_predictions: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -105,8 +109,15 @@ def _run_one_experiment(
     splits: list,
     ridge_alpha: float,
     score_prefix: str,
-) -> list[CrossSectionalResult]:
-    """Run walk-forward ridge on *feature_cols*; return pooled CS results."""
+) -> tuple[pd.DataFrame, list[CrossSectionalResult]]:
+    """Run walk-forward ridge on *feature_cols*.
+
+    Returns
+    -------
+    tuple of (pooled_df, cs_results):
+    - pooled_df: flat DataFrame of all test-fold rows with score columns added.
+    - cs_results: list of CrossSectionalResult, one per label in LABEL_COLS.
+    """
     pooled_rows: list[pd.DataFrame] = []
 
     for split in splits:
@@ -139,7 +150,7 @@ def _run_one_experiment(
         cs = aggregate_cs_metrics(pooled_df, score_col, label_col, date_col="date")
         cs_results.append(cs)
 
-    return cs_results
+    return pooled_df, cs_results
 
 
 # ── Main runner ────────────────────────────────────────────────────────────────
@@ -292,26 +303,32 @@ def run_news_sector_baseline(
 
     # ── 7. Run all four experiments ───────────────────────────────────────────
     logger.info("Running price-only experiment...")
-    po_cs = _run_one_experiment(
+    _, po_cs = _run_one_experiment(
         data_price, FEATURE_COLS, common_dates, splits, ridge_alpha, "po"
     )
 
     logger.info("Running price+macro experiment...")
-    pm_cs = _run_one_experiment(
+    _, pm_cs = _run_one_experiment(
         data_macro, FEATURE_COLS + MACRO_FEATURE_COLS, common_dates, splits, ridge_alpha, "pm"
     )
 
     logger.info("Running price+news experiment...")
-    pn_cs = _run_one_experiment(
+    _, pn_cs = _run_one_experiment(
         data_news, FEATURE_COLS + NEWS_FEATURE_COLS, common_dates, splits, ridge_alpha, "pn"
     )
 
     logger.info("Running price+macro+news experiment...")
-    pmn_cs = _run_one_experiment(
+    pmn_full_df, pmn_cs = _run_one_experiment(
         data_all,
         FEATURE_COLS + MACRO_FEATURE_COLS + NEWS_FEATURE_COLS,
         common_dates, splits, ridge_alpha, "pmn",
     )
+
+    # Slim the pmn pooled DataFrame to the columns needed for backtesting:
+    # date, ticker, model scores, and realised labels.
+    _score_cols = [f"pmn_{lc}" for lc in LABEL_COLS]
+    _keep_cols = ["date", "ticker"] + _score_cols + LABEL_COLS
+    pooled_predictions = pmn_full_df[[c for c in _keep_cols if c in pmn_full_df.columns]].copy()
 
     # ── 8. Log comparison ─────────────────────────────────────────────────────
     comparisons: list[FourWayComparison] = []
@@ -346,6 +363,7 @@ def run_news_sector_baseline(
         n_folds=len(splits),
         data_mode=data_mode,
         comparisons=comparisons,
+        pooled_predictions=pooled_predictions,
     )
 
 
