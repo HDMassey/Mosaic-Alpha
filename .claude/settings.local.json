@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest tests/test_alignment.py tests/test_leakage.py -v)",
+      "Bash(python -m mosaic_alpha.cli run-baseline --ticker SPY --start 2015-01-01 --end 2024-12-31 --verbose)",
+      "Bash(python -m mosaic_alpha.cli run-baseline --ticker SPY --start 2015-01-01 --end 2024-12-31)",
+      "Bash(python -m pytest tests/ -v)"
+    ]
+  }
+}
