@@ -1,4 +1,5 @@
 import logging
+import sys
 from pathlib import Path
 
 import typer
@@ -34,6 +35,11 @@ def run_baseline(
     report_path: Path = typer.Option(
         Path("reports/generated/baseline_spy.md"),
         help="Output path for the Markdown report.",
+    ),
+    save_memory: bool = typer.Option(
+        True,
+        "--save-memory/--no-save-memory",
+        help="Save this experiment to the local registry (memory/experiments/).",
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging."),
 ) -> None:
@@ -76,6 +82,59 @@ def run_baseline(
     render_report(result, report_path)
     console.print(f"[green]Report written to[/green] {report_path}")
 
+    if save_memory:
+        _save_baseline_experiment(
+            result=result,
+            ticker=ticker,
+            start=start,
+            end=end,
+            ridge_alpha=ridge_alpha,
+            report_path=report_path,
+        )
+
+
+def _save_baseline_experiment(result, *, ticker, start, end, ridge_alpha, report_path) -> None:
+    """Build and persist an ExperimentRecord for run-baseline."""
+    from mosaic_alpha.research.registry import build_record, save_experiment
+
+    metrics_summary = {}
+    if result.aggregate:
+        agg = result.aggregate[0]
+        metrics_summary = {
+            "label": agg.label,
+            "mean_ic": round(agg.mean_ic, 6),
+            "ic_t_stat": round(agg.ic_t_stat, 4),
+            "mean_rank_ic": round(agg.mean_rank_ic, 6),
+            "mean_hit_rate": round(agg.mean_hit_rate, 4),
+            "mean_ls_decile": round(agg.mean_ls_decile, 6),
+            "n_folds": result.n_folds,
+            "n_rows": result.n_rows,
+        }
+
+    command = (
+        f"mosaic run-baseline --ticker {ticker} --start {start} --end {end} "
+        f"--ridge-alpha {ridge_alpha}"
+    )
+    record = build_record(
+        name="run_baseline",
+        command=command,
+        start_date=start,
+        end_date=end,
+        universe=[ticker],
+        data_sources=["yfinance"],
+        feature_sets=["price"],
+        model_type="ridge",
+        validation_method="walk_forward",
+        metrics_summary=metrics_summary,
+        output_files=[str(report_path)],
+        limitations=[
+            "Single-ticker time-series only; no cross-sectional IC.",
+            "Price features only; no macro or alternative data.",
+        ],
+    )
+    exp_dir = save_experiment(record, report_text=Path(report_path).read_text(encoding="utf-8") if Path(report_path).exists() else "")
+    console.print(f"[dim]Experiment saved to[/dim] {exp_dir}")
+
 
 @app.command("run-sector-baseline")
 def run_sector_baseline(
@@ -89,6 +148,11 @@ def run_sector_baseline(
     report_path: Path = typer.Option(
         Path("reports/generated/sector_baseline.md"),
         help="Output path for the Markdown report.",
+    ),
+    save_memory: bool = typer.Option(
+        True,
+        "--save-memory/--no-save-memory",
+        help="Save this experiment to the local registry (memory/experiments/).",
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging."),
 ) -> None:
@@ -144,6 +208,58 @@ def run_sector_baseline(
     render_report(result, report_path)
     console.print(f"[green]Report written to[/green] {report_path}")
 
+    if save_memory:
+        _save_sector_experiment(
+            result=result,
+            start=start,
+            end=end,
+            ridge_alpha=ridge_alpha,
+            universe_config=universe_config,
+            report_path=report_path,
+        )
+
+
+def _save_sector_experiment(result, *, start, end, ridge_alpha, universe_config, report_path) -> None:
+    from mosaic_alpha.research.registry import build_record, save_experiment
+
+    metrics_summary: dict = {"labels": []}
+    for cs in result.pooled:
+        metrics_summary["labels"].append({
+            "label": cs.label_col,
+            "mean_ic": round(cs.mean_ic, 6),
+            "ic_t_stat": round(cs.ic_t_stat, 4),
+            "mean_rank_ic": round(cs.mean_rank_ic, 6),
+            "ic_hit_rate": round(cs.ic_hit_rate, 4),
+            "mean_ls_spread": round(cs.mean_ls_spread, 6),
+        })
+    metrics_summary["n_tickers"] = len(result.tickers)
+    metrics_summary["n_folds"] = result.n_folds
+    metrics_summary["n_panel_rows"] = result.n_panel_rows
+
+    command = (
+        f"mosaic run-sector-baseline --start {start} --end {end} "
+        f"--ridge-alpha {ridge_alpha} --universe-config {universe_config}"
+    )
+    record = build_record(
+        name="run_sector_baseline",
+        command=command,
+        start_date=start,
+        end_date=end,
+        universe=list(result.tickers),
+        data_sources=["yfinance"],
+        feature_sets=["price"],
+        model_type="ridge",
+        validation_method="walk_forward",
+        metrics_summary=metrics_summary,
+        output_files=[str(report_path)],
+        limitations=[
+            "Price features only; no macro or alternative data.",
+            "Cross-sectional IC is weak with only 11 sector ETFs.",
+        ],
+    )
+    exp_dir = save_experiment(record, report_text=Path(report_path).read_text(encoding="utf-8") if Path(report_path).exists() else "")
+    console.print(f"[dim]Experiment saved to[/dim] {exp_dir}")
+
 
 @app.command("run-macro-sector")
 def run_macro_sector(
@@ -161,6 +277,11 @@ def run_macro_sector(
     report_path: Path = typer.Option(
         Path("reports/generated/macro_sector_baseline.md"),
         help="Output path for the Markdown report.",
+    ),
+    save_memory: bool = typer.Option(
+        True,
+        "--save-memory/--no-save-memory",
+        help="Save this experiment to the local registry (memory/experiments/).",
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging."),
 ) -> None:
@@ -221,6 +342,56 @@ def run_macro_sector(
     render_report(result, report_path)
     console.print(f"[green]Report written to[/green] {report_path}")
 
+    if save_memory:
+        _save_macro_experiment(
+            result=result,
+            start=start,
+            end=end,
+            ridge_alpha=ridge_alpha,
+            universe_config=universe_config,
+            macro_config=macro_config,
+            report_path=report_path,
+        )
+
+
+def _save_macro_experiment(result, *, start, end, ridge_alpha, universe_config, macro_config, report_path) -> None:
+    from mosaic_alpha.research.registry import build_record, save_experiment
+
+    metrics_summary: dict = {"comparisons": [], "n_tickers": len(result.tickers), "n_folds": result.n_folds}
+    for cmp in result.comparisons:
+        metrics_summary["comparisons"].append({
+            "label": cmp.label_col,
+            "price_only_mean_ic": round(cmp.price_only.mean_ic, 6),
+            "price_macro_mean_ic": round(cmp.price_macro.mean_ic, 6),
+            "price_only_ic_t_stat": round(cmp.price_only.ic_t_stat, 4),
+            "price_macro_ic_t_stat": round(cmp.price_macro.ic_t_stat, 4),
+        })
+
+    command = (
+        f"mosaic run-macro-sector --start {start} --end {end} "
+        f"--ridge-alpha {ridge_alpha} --universe-config {universe_config} "
+        f"--macro-config {macro_config}"
+    )
+    record = build_record(
+        name="run_macro_sector",
+        command=command,
+        start_date=start,
+        end_date=end,
+        universe=list(result.tickers),
+        data_sources=["yfinance", "FRED"],
+        feature_sets=["price", "macro"],
+        model_type="ridge",
+        validation_method="walk_forward",
+        metrics_summary=metrics_summary,
+        output_files=[str(report_path)],
+        limitations=[
+            "FRED data requires a valid API key.",
+            "Cross-sectional IC is weak with only 11 sector ETFs.",
+        ],
+    )
+    exp_dir = save_experiment(record, report_text=Path(report_path).read_text(encoding="utf-8") if Path(report_path).exists() else "")
+    console.print(f"[dim]Experiment saved to[/dim] {exp_dir}")
+
 
 @app.command("run-news-sector")
 def run_news_sector(
@@ -268,6 +439,11 @@ def run_news_sector(
         False,
         "--force-refresh",
         help="Ignore the local GDELT cache and re-download from the API.",
+    ),
+    save_memory: bool = typer.Option(
+        True,
+        "--save-memory/--no-save-memory",
+        help="Save this experiment to the local registry (memory/experiments/).",
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging."),
 ) -> None:
@@ -356,6 +532,66 @@ def run_news_sector(
     render_report(result, report_path)
     console.print(f"[green]Report written to[/green] {report_path}")
 
+    if save_memory:
+        _save_news_experiment(
+            result=result,
+            start=start,
+            end=end,
+            ridge_alpha=ridge_alpha,
+            universe_config=universe_config,
+            macro_config=macro_config,
+            gdelt_config=gdelt_config,
+            offline_sample=offline_sample,
+            report_path=report_path,
+        )
+
+
+def _save_news_experiment(result, *, start, end, ridge_alpha, universe_config, macro_config, gdelt_config, offline_sample, report_path) -> None:
+    from mosaic_alpha.research.registry import build_record, save_experiment
+
+    metrics_summary: dict = {"comparisons": [], "n_tickers": len(result.tickers), "n_folds": result.n_folds, "data_mode": result.data_mode}
+    for cmp in result.comparisons:
+        metrics_summary["comparisons"].append({
+            "label": cmp.label_col,
+            "price_only_mean_ic": round(cmp.price_only.mean_ic, 6),
+            "price_macro_mean_ic": round(cmp.price_macro.mean_ic, 6),
+            "price_news_mean_ic": round(cmp.price_news.mean_ic, 6),
+            "price_macro_news_mean_ic": round(cmp.price_macro_news.mean_ic, 6),
+        })
+
+    data_sources = ["yfinance", "GDELT"]
+    if not offline_sample:
+        data_sources.append("FRED")
+
+    limitations = [
+        "Cross-sectional IC is weak with only 11 sector ETFs.",
+        "News intensity is a simple count proxy, not sentiment.",
+    ]
+    if offline_sample:
+        limitations.insert(0, "SAMPLE DATA: news features use synthetic counts, not real GDELT.")
+
+    command = (
+        f"mosaic run-news-sector --start {start} --end {end} "
+        f"--ridge-alpha {ridge_alpha}"
+        + (" --offline-sample" if offline_sample else "")
+    )
+    record = build_record(
+        name="run_news_sector",
+        command=command,
+        start_date=start,
+        end_date=end,
+        universe=list(result.tickers),
+        data_sources=data_sources,
+        feature_sets=["price", "macro", "news"],
+        model_type="ridge",
+        validation_method="walk_forward",
+        metrics_summary=metrics_summary,
+        output_files=[str(report_path)],
+        limitations=limitations,
+    )
+    exp_dir = save_experiment(record, report_text=Path(report_path).read_text(encoding="utf-8") if Path(report_path).exists() else "")
+    console.print(f"[dim]Experiment saved to[/dim] {exp_dir}")
+
 
 @app.command("run-backtest")
 def run_backtest_cmd(
@@ -417,6 +653,11 @@ def run_backtest_cmd(
     report_path: Path = typer.Option(
         Path("reports/generated/backtest_news_sector.md"),
         help="Output path for the backtest Markdown report.",
+    ),
+    save_memory: bool = typer.Option(
+        True,
+        "--save-memory/--no-save-memory",
+        help="Save this experiment to the local registry (memory/experiments/).",
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging."),
 ) -> None:
@@ -527,6 +768,228 @@ def run_backtest_cmd(
     # ── Step 4: write report ──────────────────────────────────────────────────
     bt_render(bt_result, report_path, data_mode=ns_result.data_mode)
     console.print(f"[green]Backtest report written to[/green] {report_path}")
+
+    if save_memory:
+        _save_backtest_experiment(
+            bt_result=bt_result,
+            ns_result=ns_result,
+            start=start,
+            end=end,
+            score_col=score_col,
+            label_col=label_col,
+            quantile=quantile,
+            cost_bps=cost_bps,
+            horizon=horizon,
+            offline_sample=offline_sample,
+            report_path=report_path,
+        )
+
+
+def _save_backtest_experiment(*, bt_result, ns_result, start, end, score_col, label_col, quantile, cost_bps, horizon, offline_sample, report_path) -> None:
+    import math
+    from mosaic_alpha.research.registry import build_record, save_experiment
+
+    def _safe(v):
+        return None if math.isnan(v) else round(v, 6)
+
+    metrics_summary = {
+        "score_col": score_col,
+        "label_col": label_col,
+        "quantile": quantile,
+        "cost_bps": cost_bps,
+        "horizon": horizon,
+        "n_periods": bt_result.n_periods,
+        "ann_gross_return": _safe(bt_result.ann_gross_return),
+        "ann_net_return": _safe(bt_result.ann_net_return),
+        "sharpe_gross": _safe(bt_result.sharpe_gross),
+        "sharpe_net": _safe(bt_result.sharpe_net),
+        "max_drawdown_gross": _safe(bt_result.max_drawdown_gross),
+        "max_drawdown_net": _safe(bt_result.max_drawdown_net),
+        "hit_rate": _safe(bt_result.hit_rate),
+        "avg_turnover": _safe(bt_result.avg_turnover),
+        "data_mode": ns_result.data_mode,
+    }
+
+    limitations = [
+        "Assumes perfect fill at closing prices (no market impact).",
+        "Short selling assumed frictionless beyond the flat cost_bps charge.",
+        "Universe limited to 11 sector ETFs; Sharpe ratios have wide CIs.",
+    ]
+    if offline_sample:
+        limitations.insert(0, "SAMPLE DATA: backtest uses synthetic news counts.")
+
+    command = (
+        f"mosaic run-backtest --start {start} --end {end} "
+        f"--cost-bps {cost_bps} --quantile {quantile} --horizon {horizon}"
+        + (" --offline-sample" if offline_sample else "")
+    )
+    record = build_record(
+        name="run_backtest",
+        command=command,
+        start_date=start,
+        end_date=end,
+        universe=list(ns_result.tickers),
+        data_sources=["yfinance", "GDELT", "FRED"],
+        feature_sets=["price", "macro", "news"],
+        model_type="ridge",
+        validation_method="walk_forward",
+        metrics_summary=metrics_summary,
+        output_files=[str(report_path)],
+        limitations=limitations,
+    )
+    exp_dir = save_experiment(record, report_text=Path(report_path).read_text(encoding="utf-8") if Path(report_path).exists() else "")
+    console.print(f"[dim]Experiment saved to[/dim] {exp_dir}")
+
+
+# ── Registry commands ──────────────────────────────────────────────────────────
+
+@app.command("list-experiments")
+def list_experiments_cmd(
+    registry_root: Path = typer.Option(
+        Path("memory/experiments"),
+        "--registry-root",
+        help="Root directory of the experiment registry.",
+    ),
+) -> None:
+    """List all saved experiments in the local registry."""
+    from mosaic_alpha.research.registry import list_experiments
+
+    records = list_experiments(registry_root=registry_root)
+
+    if not records:
+        console.print("[yellow]No experiments found in[/yellow] " + str(registry_root))
+        return
+
+    table = Table(title=f"Experiments ({len(records)} found)", show_lines=True)
+    table.add_column("ID", style="dim", no_wrap=True)
+    table.add_column("Name", style="bold")
+    table.add_column("Created (UTC)", justify="right")
+    table.add_column("Start", justify="right")
+    table.add_column("End", justify="right")
+    table.add_column("Key Metrics", justify="left")
+
+    for rec in records:
+        key_metrics = _format_key_metrics(rec.metrics_summary)
+        created_short = rec.created_at[:19].replace("T", " ")  # "YYYY-MM-DD HH:MM:SS"
+        table.add_row(
+            rec.experiment_id,
+            rec.name,
+            created_short,
+            rec.start_date,
+            rec.end_date,
+            key_metrics,
+        )
+
+    console.print(table)
+
+
+def _format_key_metrics(metrics: dict) -> str:
+    """Return a compact one-line summary of the most important metrics."""
+    parts: list[str] = []
+
+    # Backtest metrics
+    if "sharpe_net" in metrics and metrics["sharpe_net"] is not None:
+        parts.append(f"Sharpe(net)={metrics['sharpe_net']:+.2f}")
+    if "ann_net_return" in metrics and metrics["ann_net_return"] is not None:
+        parts.append(f"Ret(net)={metrics['ann_net_return']*100:+.1f}%")
+
+    # IC metrics (sector baselines)
+    if "labels" in metrics and metrics["labels"]:
+        first = metrics["labels"][0]
+        if "mean_ic" in first:
+            parts.append(f"IC={first['mean_ic']:+.4f}")
+        if "ic_t_stat" in first:
+            parts.append(f"t={first['ic_t_stat']:+.2f}")
+
+    # Comparison metrics (macro/news baselines)
+    if "comparisons" in metrics and metrics["comparisons"]:
+        first = metrics["comparisons"][0]
+        for key in ("price_macro_news_mean_ic", "price_macro_mean_ic", "price_only_mean_ic"):
+            if key in first:
+                short = key.replace("_mean_ic", "").replace("price_", "")
+                parts.append(f"IC({short})={first[key]:+.4f}")
+                break
+
+    # Simple baseline
+    if "mean_ic" in metrics:
+        parts.append(f"IC={metrics['mean_ic']:+.4f}")
+    if "ic_t_stat" in metrics:
+        parts.append(f"t={metrics['ic_t_stat']:+.2f}")
+
+    return "  ".join(parts) if parts else "—"
+
+
+@app.command("show-experiment")
+def show_experiment_cmd(
+    experiment_id: str = typer.Argument(help="Experiment ID to display (e.g. 20240601_120000_run_baseline)."),
+    registry_root: Path = typer.Option(
+        Path("memory/experiments"),
+        "--registry-root",
+        help="Root directory of the experiment registry.",
+    ),
+) -> None:
+    """Show metadata and report path for a specific experiment."""
+    from mosaic_alpha.research.registry import show_experiment
+
+    rec = show_experiment(experiment_id, registry_root=registry_root)
+
+    if rec is None:
+        console.print(f"[red]Experiment not found:[/red] {experiment_id}")
+        console.print(f"[dim]Registry root:[/dim] {registry_root}")
+        raise SystemExit(1)
+
+    exp_dir = Path(registry_root) / rec.experiment_id
+
+    console.print(f"\n[bold cyan]Experiment:[/bold cyan] {rec.experiment_id}")
+    console.print(f"  [bold]Name:[/bold]        {rec.name}")
+    console.print(f"  [bold]Created:[/bold]     {rec.created_at}")
+    console.print(f"  [bold]Command:[/bold]     {rec.command}")
+    console.print(f"  [bold]Window:[/bold]      {rec.start_date} to {rec.end_date}")
+    console.print(f"  [bold]Universe:[/bold]    {', '.join(rec.universe) if rec.universe else '—'}")
+    console.print(f"  [bold]Data sources:[/bold] {', '.join(rec.data_sources) if rec.data_sources else '—'}")
+    console.print(f"  [bold]Features:[/bold]    {', '.join(rec.feature_sets) if rec.feature_sets else '—'}")
+    console.print(f"  [bold]Model:[/bold]       {rec.model_type}")
+    console.print(f"  [bold]Validation:[/bold]  {rec.validation_method}")
+
+    if rec.metrics_summary:
+        console.print("\n  [bold]Metrics:[/bold]")
+        _print_metrics(rec.metrics_summary, indent="    ")
+
+    if rec.limitations:
+        console.print("\n  [bold]Limitations:[/bold]")
+        for lim in rec.limitations:
+            console.print(f"    - {lim}")
+
+    if rec.notes:
+        console.print(f"\n  [bold]Notes:[/bold] {rec.notes}")
+
+    report_md = exp_dir / "report.md"
+    console.print(f"\n  [bold]Files:[/bold]")
+    console.print(f"    metadata: {exp_dir / 'metadata.json'}")
+    console.print(f"    metrics:  {exp_dir / 'metrics.json'}")
+    if report_md.exists():
+        console.print(f"    report:   {report_md}")
+    console.print()
+
+
+def _print_metrics(metrics: dict, indent: str = "") -> None:
+    """Recursively print a metrics dict in a readable format."""
+    for key, value in metrics.items():
+        if isinstance(value, list):
+            console.print(f"{indent}[dim]{key}:[/dim]")
+            for item in value:
+                if isinstance(item, dict):
+                    parts = "  ".join(f"{k}={v}" for k, v in item.items())
+                    console.print(f"{indent}  {parts}")
+                else:
+                    console.print(f"{indent}  {item}")
+        elif isinstance(value, dict):
+            console.print(f"{indent}[dim]{key}:[/dim]")
+            _print_metrics(value, indent=indent + "  ")
+        elif isinstance(value, float):
+            console.print(f"{indent}[dim]{key}:[/dim] {value:+.6f}")
+        else:
+            console.print(f"{indent}[dim]{key}:[/dim] {value}")
 
 
 if __name__ == "__main__":

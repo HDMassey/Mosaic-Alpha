@@ -24,6 +24,9 @@ reports/generated/
 .vscode/
 .idea/
 
+# Experiment registry (generated; keep directory structure, ignore contents)
+memory/experiments/*/
+
 # Secrets
 *.key
 
@@ -32,3 +35,7 @@ reports/generated/
 
 # Python packaging metadata
 *.egg-info/
+
+# Generated research memory
+memory/experiments/*
+!memory/experiments/.gitkeep
