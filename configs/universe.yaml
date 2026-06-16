@@ -1,0 +1,20 @@
+universe:
+  name: sector_etfs
+  description: >
+    SPDR sector ETF universe covering the eleven GICS sectors plus the
+    broad S&P 500 benchmark.  XLRE (Real Estate) and XLC (Communication
+    Services) were spun out in 2015 and 2018 respectively; the loader
+    fetches whatever history is available and aligns on common dates.
+  tickers:
+    - SPY   # S&P 500 benchmark
+    - XLB   # Materials
+    - XLE   # Energy
+    - XLF   # Financials
+    - XLI   # Industrials
+    - XLK   # Technology
+    - XLP   # Consumer Staples
+    - XLU   # Utilities
+    - XLV   # Health Care
+    - XLY   # Consumer Discretionary
+    - XLRE  # Real Estate (since 2015-10-08)
+    - XLC   # Communication Services (since 2018-06-19)

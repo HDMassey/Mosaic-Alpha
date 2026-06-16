@@ -52,7 +52,6 @@ def run_baseline(
 
     result = _run(ticker=ticker, start=start, end=end, ridge_alpha=ridge_alpha)
 
-    # ── Pretty-print summary table ────────────────────────────────────────────
     table = Table(title=f"Aggregate Metrics - {ticker}", show_lines=True)
     table.add_column("Label", style="bold")
     table.add_column("IC (mean+/-std)", justify="right")
@@ -72,11 +71,76 @@ def run_baseline(
         )
 
     console.print(table)
-    console.print(
-        f"[dim]Folds: {result.n_folds} | Clean rows: {result.n_rows:,}[/dim]"
+    console.print(f"[dim]Folds: {result.n_folds} | Clean rows: {result.n_rows:,}[/dim]")
+
+    render_report(result, report_path)
+    console.print(f"[green]Report written to[/green] {report_path}")
+
+
+@app.command("run-sector-baseline")
+def run_sector_baseline(
+    start: str = typer.Option("2015-01-01", help="Start date (YYYY-MM-DD)."),
+    end: str = typer.Option("2024-12-31", help="End date (YYYY-MM-DD)."),
+    ridge_alpha: float = typer.Option(1.0, help="Ridge regularisation strength."),
+    universe_config: Path = typer.Option(
+        Path("configs/universe.yaml"),
+        help="Path to universe YAML config.",
+    ),
+    report_path: Path = typer.Option(
+        Path("reports/generated/sector_baseline.md"),
+        help="Output path for the Markdown report.",
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging."),
+) -> None:
+    """Run the cross-sectional sector ETF baseline and write a report."""
+    logging.basicConfig(
+        level=logging.DEBUG if verbose else logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
-    # ── Write report ──────────────────────────────────────────────────────────
+    from mosaic_alpha.research.sector_baseline import (
+        render_report,
+        run_sector_baseline as _run,
+    )
+
+    console.print(
+        f"[bold cyan]MosaicAlpha Sector Baseline[/bold cyan] "
+        f"[dim]{start} to {end}[/dim]"
+    )
+
+    result = _run(
+        start=start,
+        end=end,
+        universe_config=universe_config,
+        ridge_alpha=ridge_alpha,
+    )
+
+    # ── Pooled metrics table ──────────────────────────────────────────────────
+    table = Table(title="Pooled Cross-Sectional Metrics", show_lines=True)
+    table.add_column("Label", style="bold")
+    table.add_column("Mean IC", justify="right")
+    table.add_column("IC t-stat", justify="right")
+    table.add_column("Mean Rank IC", justify="right")
+    table.add_column("IC Hit Rate", justify="right")
+    table.add_column("Mean L/S Spread", justify="right")
+
+    for cs in result.pooled:
+        table.add_row(
+            cs.label_col,
+            f"{cs.mean_ic:+.4f}",
+            f"{cs.ic_t_stat:+.2f}",
+            f"{cs.mean_rank_ic:+.4f}",
+            f"{cs.ic_hit_rate:.3f}",
+            f"{cs.mean_ls_spread:+.4f}",
+        )
+
+    console.print(table)
+    console.print(
+        f"[dim]Universe: {len(result.tickers)} tickers | "
+        f"Folds: {result.n_folds} | "
+        f"Panel rows: {result.n_panel_rows:,}[/dim]"
+    )
+
     render_report(result, report_path)
     console.print(f"[green]Report written to[/green] {report_path}")
 

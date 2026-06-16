@@ -25,6 +25,7 @@ dependencies = [
     "requests",
     "python-dotenv",
     "yfinance",
+    "pyyaml",
 ]
 
 [project.scripts]

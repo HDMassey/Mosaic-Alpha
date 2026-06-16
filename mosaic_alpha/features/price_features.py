@@ -66,6 +66,42 @@ def build_features(prices: pd.DataFrame) -> pd.DataFrame:
     return feat
 
 
+def build_panel_features(panel: pd.DataFrame) -> pd.DataFrame:
+    """Compute price features for every ticker in a panel dataset.
+
+    Features are computed independently per ticker so that rolling windows
+    never mix data across tickers.
+
+    Parameters
+    ----------
+    panel:
+        DataFrame with a ``(date, ticker)`` MultiIndex and at least ``close``
+        and ``volume`` columns.  Typically the output of
+        :func:`data.loader.load_panel`.
+
+    Returns
+    -------
+    DataFrame with the same ``(date, ticker)`` MultiIndex and feature columns.
+    NaN warm-up rows are retained; callers should ``dropna()`` after joining
+    with labels.
+    """
+    tickers = panel.index.get_level_values("ticker").unique()
+    pieces: list[pd.DataFrame] = []
+
+    for ticker in tickers:
+        # Extract a plain DatetimeIndex DataFrame for this ticker
+        prices_t = panel.xs(ticker, level="ticker")
+        feat_t = build_features(prices_t)
+        # Re-attach the ticker level
+        feat_t.index = pd.MultiIndex.from_arrays(
+            [feat_t.index, [ticker] * len(feat_t)],
+            names=["date", "ticker"],
+        )
+        pieces.append(feat_t)
+
+    return pd.concat(pieces).sort_index()
+
+
 FEATURE_COLS = [
     "log_return",
     "rolling_vol_5",

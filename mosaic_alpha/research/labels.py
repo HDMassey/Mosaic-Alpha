@@ -46,4 +46,41 @@ def build_labels(prices: pd.DataFrame, horizons: tuple[int, ...] = _HORIZONS) ->
     return labels
 
 
+def build_panel_labels(
+    panel: pd.DataFrame,
+    horizons: tuple[int, ...] = _HORIZONS,
+) -> pd.DataFrame:
+    """Compute forward-return labels for every ticker in a panel dataset.
+
+    Labels are computed independently per ticker so that the forward close
+    for ticker A never contaminates the label for ticker B.
+
+    Parameters
+    ----------
+    panel:
+        DataFrame with a ``(date, ticker)`` MultiIndex and a ``close`` column.
+        Typically the output of :func:`data.loader.load_panel`.
+    horizons:
+        Tuple of integer look-ahead horizons in trading days.
+
+    Returns
+    -------
+    DataFrame with the same ``(date, ticker)`` MultiIndex and label columns.
+    The last *h* rows of each ``fwd_ret_{h}`` column are NaN per ticker.
+    """
+    tickers = panel.index.get_level_values("ticker").unique()
+    pieces: list[pd.DataFrame] = []
+
+    for ticker in tickers:
+        prices_t = panel.xs(ticker, level="ticker")
+        lbl_t = build_labels(prices_t, horizons=horizons)
+        lbl_t.index = pd.MultiIndex.from_arrays(
+            [lbl_t.index, [ticker] * len(lbl_t)],
+            names=["date", "ticker"],
+        )
+        pieces.append(lbl_t)
+
+    return pd.concat(pieces).sort_index()
+
+
 LABEL_COLS = [f"fwd_ret_{h}" for h in _HORIZONS]

@@ -26,3 +26,9 @@ reports/generated/
 
 # Secrets
 *.key
+
+# Local Claude settings
+.claude/settings.local.json
+
+# Python packaging metadata
+*.egg-info/
