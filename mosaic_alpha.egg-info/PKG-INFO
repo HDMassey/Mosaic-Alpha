@@ -20,3 +20,4 @@ Requires-Dist: rich
 Requires-Dist: requests
 Requires-Dist: python-dotenv
 Requires-Dist: yfinance
+Requires-Dist: pyyaml

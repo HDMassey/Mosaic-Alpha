@@ -15,3 +15,4 @@ rich
 requests
 python-dotenv
 yfinance
+pyyaml

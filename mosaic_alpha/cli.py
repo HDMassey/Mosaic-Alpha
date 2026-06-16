@@ -145,5 +145,82 @@ def run_sector_baseline(
     console.print(f"[green]Report written to[/green] {report_path}")
 
 
+@app.command("run-macro-sector")
+def run_macro_sector(
+    start: str = typer.Option("2015-01-01", help="Start date (YYYY-MM-DD)."),
+    end: str = typer.Option("2024-12-31", help="End date (YYYY-MM-DD)."),
+    ridge_alpha: float = typer.Option(1.0, help="Ridge regularisation strength."),
+    universe_config: Path = typer.Option(
+        Path("configs/universe.yaml"),
+        help="Path to universe YAML config.",
+    ),
+    macro_config: Path = typer.Option(
+        Path("configs/macro.yaml"),
+        help="Path to macro YAML config.",
+    ),
+    report_path: Path = typer.Option(
+        Path("reports/generated/macro_sector_baseline.md"),
+        help="Output path for the Markdown report.",
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging."),
+) -> None:
+    """Run price-only vs price+macro sector comparison and write a report."""
+    logging.basicConfig(
+        level=logging.DEBUG if verbose else logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
+    from mosaic_alpha.research.macro_sector_baseline import (
+        render_report,
+        run_macro_sector_baseline as _run,
+    )
+
+    console.print(
+        f"[bold cyan]MosaicAlpha Macro Sector Baseline[/bold cyan] "
+        f"[dim]{start} to {end}[/dim]"
+    )
+
+    result = _run(
+        start=start,
+        end=end,
+        universe_config=universe_config,
+        macro_config=macro_config,
+        ridge_alpha=ridge_alpha,
+    )
+
+    # ── Comparison table ──────────────────────────────────────────────────────
+    table = Table(title="Price-Only vs Price+Macro (Pooled CS-IC)", show_lines=True)
+    table.add_column("Label", style="bold")
+    table.add_column("Model", style="dim")
+    table.add_column("Mean IC", justify="right")
+    table.add_column("IC t-stat", justify="right")
+    table.add_column("Rank IC", justify="right")
+    table.add_column("Hit Rate", justify="right")
+    table.add_column("L/S Spread", justify="right")
+
+    for cmp in result.comparisons:
+        for label, cs in [("price-only", cmp.price_only), ("price+macro", cmp.price_macro)]:
+            table.add_row(
+                cmp.label_col if label == "price-only" else "",
+                label,
+                f"{cs.mean_ic:+.4f}",
+                f"{cs.ic_t_stat:+.2f}",
+                f"{cs.mean_rank_ic:+.4f}",
+                f"{cs.ic_hit_rate:.3f}",
+                f"{cs.mean_ls_spread:+.4f}",
+            )
+
+    console.print(table)
+    console.print(
+        f"[dim]Universe: {len(result.tickers)} tickers | "
+        f"Macro series: {len(result.macro_series)} | "
+        f"Folds: {result.n_folds} | "
+        f"Panel rows: {result.n_panel_rows:,}[/dim]"
+    )
+
+    render_report(result, report_path)
+    console.print(f"[green]Report written to[/green] {report_path}")
+
+
 if __name__ == "__main__":
     app()

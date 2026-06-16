@@ -1,0 +1,43 @@
+macro:
+  description: >
+    FRED series used for macroeconomic regime feature engineering.
+    All series are forward-filled to a daily calendar and lagged by
+    one trading day before being joined to the sector ETF panel.
+
+  series:
+    DGS10:
+      description: 10-Year Treasury Constant Maturity Rate (%)
+      frequency: daily
+      source: Federal Reserve Board / FRED
+
+    DGS2:
+      description: 2-Year Treasury Constant Maturity Rate (%)
+      frequency: daily
+      source: Federal Reserve Board / FRED
+
+    FEDFUNDS:
+      description: Effective Federal Funds Rate (%)
+      frequency: monthly
+      source: Federal Reserve Bank of New York / FRED
+      release_lag_days: 7
+
+    CPIAUCSL:
+      description: >
+        Consumer Price Index for All Urban Consumers: All Items (index 1982-84=100).
+        Used to compute year-over-year inflation rate.
+      frequency: monthly
+      source: U.S. Bureau of Labor Statistics / FRED
+      release_lag_days: 30
+
+    UNRATE:
+      description: Unemployment Rate (%)
+      frequency: monthly
+      source: U.S. Bureau of Labor Statistics / FRED
+      release_lag_days: 30
+
+    BAA10Y:
+      description: >
+        Moody's Seasoned Baa Corporate Bond Yield Relative to Yield on
+        10-Year Treasury Constant Maturity (%).  A proxy for credit risk premium.
+      frequency: daily
+      source: Federal Reserve Board / FRED
