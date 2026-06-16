@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.env
+
+# Data
+data/
+*.parquet
+*.duckdb
+*.sqlite
+*.db
+*.csv
+*.jsonl
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Reports generated locally
+reports/generated/
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
+
+# Secrets
+*.key

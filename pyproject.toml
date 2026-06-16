@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mosaic-alpha"
+version = "0.1.0"
+description = "A local-first alternative-data research workbench for discovering and validating quantitative trading signals."
+requires-python = ">=3.11"
+dependencies = [
+    "pandas",
+    "numpy",
+    "polars",
+    "duckdb",
+    "pyarrow",
+    "scikit-learn",
+    "statsmodels",
+    "matplotlib",
+    "plotly",
+    "streamlit",
+    "networkx",
+    "pydantic",
+    "typer",
+    "rich",
+    "requests",
+    "python-dotenv",
+    "yfinance",
+]
+
+[project.scripts]
+mosaic = "mosaic_alpha.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["mosaic_alpha", "mosaic_alpha.*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100

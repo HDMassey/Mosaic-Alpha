@@ -1,0 +1,2 @@
+[console_scripts]
+mosaic = mosaic_alpha.cli:app

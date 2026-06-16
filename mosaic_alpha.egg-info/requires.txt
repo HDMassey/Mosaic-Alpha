@@ -1,0 +1,17 @@
+pandas
+numpy
+polars
+duckdb
+pyarrow
+scikit-learn
+statsmodels
+matplotlib
+plotly
+streamlit
+networkx
+pydantic
+typer
+rich
+requests
+python-dotenv
+yfinance
