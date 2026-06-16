@@ -1,0 +1,69 @@
+gdelt:
+  # Sector ETF keyword groups for GDELT DOC 2.0 article-count queries.
+  # SPY intentionally omitted: no meaningful sector-specific keywords.
+  # Keywords are joined with OR logic inside each group.
+  sector_keywords:
+    XLE:
+      - energy
+      - oil
+      - gas
+      - crude
+      - refinery
+    XLF:
+      - banks
+      - credit
+      - lending
+      - insurance
+      - financials
+    XLK:
+      - technology
+      - software
+      - semiconductor
+      - cloud
+      - "artificial intelligence"
+    XLV:
+      - healthcare
+      - pharma
+      - biotech
+      - hospitals
+      - "medical devices"
+    XLI:
+      - industrials
+      - manufacturing
+      - aerospace
+      - machinery
+      - logistics
+    XLY:
+      - retail
+      - "consumer discretionary"
+      - autos
+      - restaurants
+      - luxury
+    XLP:
+      - "consumer staples"
+      - groceries
+      - beverages
+      - "household products"
+    XLU:
+      - utilities
+      - electricity
+      - "power grid"
+      - "natural gas utility"
+    XLB:
+      - materials
+      - chemicals
+      - mining
+      - metals
+      - "construction materials"
+    XLRE:
+      - "real estate"
+      - REIT
+      - housing
+      - "commercial property"
+      - mortgage
+    XLC:
+      - communications
+      - media
+      - telecom
+      - streaming
+      - advertising

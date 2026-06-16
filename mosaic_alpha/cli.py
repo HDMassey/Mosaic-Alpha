@@ -222,5 +222,140 @@ def run_macro_sector(
     console.print(f"[green]Report written to[/green] {report_path}")
 
 
+@app.command("run-news-sector")
+def run_news_sector(
+    start: str = typer.Option("2018-01-01", help="Start date (YYYY-MM-DD)."),
+    end: str = typer.Option("2024-12-31", help="End date (YYYY-MM-DD)."),
+    ridge_alpha: float = typer.Option(1.0, help="Ridge regularisation strength."),
+    universe_config: Path = typer.Option(
+        Path("configs/universe.yaml"),
+        help="Path to universe YAML config.",
+    ),
+    macro_config: Path = typer.Option(
+        Path("configs/macro.yaml"),
+        help="Path to macro YAML config.",
+    ),
+    gdelt_config: Path = typer.Option(
+        Path("configs/gdelt.yaml"),
+        help="Path to GDELT sector keyword YAML config.",
+    ),
+    report_path: Path = typer.Option(
+        Path("reports/generated/news_sector_baseline.md"),
+        help="Output path for the Markdown report.",
+    ),
+    offline_sample: bool = typer.Option(
+        False,
+        "--offline-sample",
+        help=(
+            "Use deterministic synthetic news counts instead of live GDELT calls. "
+            "Useful for pipeline testing or when GDELT is rate-limiting."
+        ),
+    ),
+    sectors: str = typer.Option(
+        "",
+        "--sectors",
+        help=(
+            "Comma-separated subset of sector tickers to fetch news for, "
+            "e.g. XLE,XLK. When empty, all tickers from gdelt_config are used."
+        ),
+    ),
+    sleep_seconds: float = typer.Option(
+        10.0,
+        "--sleep-seconds",
+        help="Seconds to sleep between live GDELT requests (rate-limit compliance).",
+    ),
+    force_refresh: bool = typer.Option(
+        False,
+        "--force-refresh",
+        help="Ignore the local GDELT cache and re-download from the API.",
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging."),
+) -> None:
+    """Run 4-way price / macro / news / macro+news comparison and write a report.
+
+    Use --offline-sample to run without live GDELT calls (safe for testing).
+    Use --sectors XLE,XLK to limit which sectors are fetched (fewer API calls).
+    Use --sleep-seconds 30 if you hit HTTP 429 rate limits.
+    Use --force-refresh to bypass the local cache and re-download.
+    """
+    logging.basicConfig(
+        level=logging.DEBUG if verbose else logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
+    from mosaic_alpha.research.news_sector_baseline import (
+        render_report,
+        run_news_sector_baseline as _run,
+    )
+
+    sectors_list = [s.strip() for s in sectors.split(",") if s.strip()] or None
+
+    mode_label = "[yellow]SAMPLE DATA[/yellow]" if offline_sample else "[green]live GDELT[/green]"
+    console.print(
+        f"[bold cyan]MosaicAlpha News Sector Baseline[/bold cyan] "
+        f"[dim]{start} to {end}[/dim] | mode: {mode_label}"
+    )
+
+    if offline_sample:
+        console.print(
+            "[yellow]WARNING: --offline-sample is active. "
+            "News features use synthetic data, not real GDELT counts.[/yellow]"
+        )
+
+    result = _run(
+        start=start,
+        end=end,
+        universe_config=universe_config,
+        macro_config=macro_config,
+        gdelt_config=gdelt_config,
+        ridge_alpha=ridge_alpha,
+        gdelt_sleep_secs=sleep_seconds,
+        offline_sample=offline_sample,
+        sectors=sectors_list,
+        force_refresh=force_refresh,
+    )
+
+    # ── 4-way comparison table ────────────────────────────────────────────────
+    table = Table(title="4-Way Comparison (Pooled CS-IC)", show_lines=True)
+    table.add_column("Label", style="bold")
+    table.add_column("Model", style="dim")
+    table.add_column("Mean IC", justify="right")
+    table.add_column("IC t-stat", justify="right")
+    table.add_column("Rank IC", justify="right")
+    table.add_column("Hit Rate", justify="right")
+    table.add_column("L/S Spread", justify="right")
+
+    model_keys = [
+        ("price-only", "price_only"),
+        ("price+macro", "price_macro"),
+        ("price+news", "price_news"),
+        ("price+macro+news", "price_macro_news"),
+    ]
+
+    for cmp in result.comparisons:
+        for i, (model_name, attr) in enumerate(model_keys):
+            cs = getattr(cmp, attr)
+            table.add_row(
+                cmp.label_col if i == 0 else "",
+                model_name,
+                f"{cs.mean_ic:+.4f}",
+                f"{cs.ic_t_stat:+.2f}",
+                f"{cs.mean_rank_ic:+.4f}",
+                f"{cs.ic_hit_rate:.3f}",
+                f"{cs.mean_ls_spread:+.4f}",
+            )
+
+    console.print(table)
+    console.print(
+        f"[dim]Universe: {len(result.tickers)} tickers | "
+        f"News: {len(result.news_tickers)} tickers | "
+        f"Folds: {result.n_folds} | "
+        f"Panel rows: {result.n_panel_rows:,}[/dim]"
+    )
+
+    render_report(result, report_path)
+    console.print(f"[green]Report written to[/green] {report_path}")
+
+
 if __name__ == "__main__":
     app()
