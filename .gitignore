@@ -44,3 +44,6 @@ memory/experiments/*
 memory/research_graph.json
 memory/research_graph.graphml
 memory/examples/
+
+# Streamlit cache
+.streamlit/

@@ -1233,5 +1233,53 @@ def graph_query_cmd(
         console.print(table)
 
 
+# ── Dashboard command ─────────────────────────────────────────────────────────
+
+@app.command("dashboard")
+def dashboard_cmd(
+    port: int = typer.Option(8501, "--port", help="Port for the Streamlit server."),
+    host: str = typer.Option("localhost", "--host", help="Host address to bind to."),
+    browser: bool = typer.Option(True, "--browser/--no-browser", help="Open browser automatically."),
+) -> None:
+    """Launch the MosaicAlpha research dashboard in a local Streamlit server.
+
+    The dashboard reads from the local file system:
+
+    \\b
+      memory/experiments/        experiment registry
+      memory/research_graph.json knowledge graph (run: mosaic build-graph)
+      reports/generated/         CLI-generated Markdown reports
+
+    Quick start:
+        mosaic dashboard
+    """
+    import subprocess  # noqa: PLC0415
+    import sys  # noqa: PLC0415
+
+    app_path = Path(__file__).parent / "dashboard" / "app.py"
+    if not app_path.exists():
+        console.print(f"[red]Dashboard app not found at[/red] {app_path}")
+        raise SystemExit(1)
+
+    cmd = [
+        sys.executable, "-m", "streamlit", "run",
+        str(app_path),
+        "--server.port", str(port),
+        "--server.address", host,
+        "--server.headless", "false" if browser else "true",
+        "--theme.base", "light",
+    ]
+
+    console.print(
+        f"[bold cyan]MosaicAlpha Dashboard[/bold cyan] "
+        f"→ http://{host}:{port}  (Ctrl+C to stop)"
+    )
+
+    try:
+        subprocess.run(cmd, check=False)
+    except KeyboardInterrupt:
+        console.print("\n[dim]Dashboard stopped.[/dim]")
+
+
 if __name__ == "__main__":
     app()
