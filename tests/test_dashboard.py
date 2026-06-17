@@ -31,12 +31,17 @@ from mosaic_alpha.dashboard.helpers import (
     extract_key_metrics,
     find_latest_backtest,
     find_reports,
+    find_vendor_repos,
+    format_metric,
     graph_edge_table,
     graph_node_table,
     load_experiment_detail,
     load_experiments,
     load_graph_json,
     load_report_text,
+    metric_explanation,
+    metric_label,
+    summarize_vendor_repos,
 )
 from mosaic_alpha.research.registry import build_record, save_experiment
 
@@ -368,3 +373,106 @@ def test_dashboard_cmd_help():
     result = runner.invoke(app, ["dashboard", "--help"])
     assert result.exit_code == 0
     assert "streamlit" in result.output.lower() or "dashboard" in result.output.lower()
+
+
+# ── 10. format_metric ────────────────────────────────────────────────────────
+
+def test_format_metric_sharpe():
+    assert format_metric(1.25, "sharpe_net") == "+1.25"
+
+
+def test_format_metric_return_as_percent():
+    """ann_net_return should be multiplied by 100 and suffixed with %."""
+    result = format_metric(0.09, "ann_net_return")
+    assert result.endswith("%")
+    assert "9" in result
+
+
+def test_format_metric_drawdown_as_percent():
+    result = format_metric(-0.15, "max_drawdown_net")
+    assert result.endswith("%")
+    assert "-" in result
+
+
+def test_format_metric_none_returns_dash():
+    assert format_metric(None, "sharpe_net") == "—"
+
+
+def test_format_metric_unknown_key_falls_back():
+    """Unknown metric names should not raise; return a string."""
+    result = format_metric(0.123456, "some_unknown_metric")
+    assert isinstance(result, str)
+    assert "0.1235" in result
+
+
+# ── 11. metric_label / metric_explanation ────────────────────────────────────
+
+def test_metric_label_known():
+    assert metric_label("sharpe_net") == "Sharpe Ratio (net)"
+
+
+def test_metric_label_unknown_uses_title_case():
+    label = metric_label("my_custom_metric")
+    assert label == "My Custom Metric"
+
+
+def test_metric_explanation_known():
+    explanation = metric_explanation("mean_ic")
+    assert len(explanation) > 10
+    assert "correlation" in explanation.lower() or "ic" in explanation.lower()
+
+
+def test_metric_explanation_unknown_returns_empty():
+    assert metric_explanation("nonexistent_key") == ""
+
+
+# ── 12. find_vendor_repos / summarize_vendor_repos ───────────────────────────
+
+def test_find_vendor_repos_absent_vendor_dir(tmp_path):
+    """When vendor dir does not exist, repos are returned with present=False."""
+    repos = find_vendor_repos(vendor_base=tmp_path / "no_vendor")
+    assert len(repos) == 4  # 4 known vendor repos
+    assert all(r["present"] is False for r in repos)
+
+
+def test_find_vendor_repos_required_keys(tmp_path):
+    """Each repo dict must contain the expected keys."""
+    repos = find_vendor_repos(vendor_base=tmp_path / "no_vendor")
+    required = {"name", "path", "present", "readme_snippet", "display_name", "tagline",
+                "influence", "description"}
+    for repo in repos:
+        assert required.issubset(repo.keys()), f"Missing keys in {repo['name']}"
+
+
+def test_find_vendor_repos_present_with_readme(tmp_path):
+    """When a vendor repo dir exists with a README, present=True and snippet populated."""
+    vendor_dir = tmp_path / "vendor"
+    repo_dir = vendor_dir / "agent-reach"
+    repo_dir.mkdir(parents=True)
+    readme_content = "\n".join([f"Line {i}" for i in range(25)])
+    (repo_dir / "README.md").write_text(readme_content, encoding="utf-8")
+
+    repos = find_vendor_repos(vendor_base=vendor_dir)
+    agent_reach = next(r for r in repos if r["name"] == "agent-reach")
+    assert agent_reach["present"] is True
+    assert "Line 0" in agent_reach["readme_snippet"]
+    # snippet should be at most 20 lines
+    assert len(agent_reach["readme_snippet"].splitlines()) <= 20
+
+
+def test_find_vendor_repos_present_without_readme(tmp_path):
+    """A vendor repo dir present but without README should have empty snippet."""
+    vendor_dir = tmp_path / "vendor"
+    repo_dir = vendor_dir / "G0DM0D3"
+    repo_dir.mkdir(parents=True)
+
+    repos = find_vendor_repos(vendor_base=vendor_dir)
+    g0d = next(r for r in repos if r["name"] == "G0DM0D3")
+    assert g0d["present"] is True
+    assert g0d["readme_snippet"] == ""
+
+
+def test_summarize_vendor_repos_is_alias(tmp_path):
+    """summarize_vendor_repos should return the same result as find_vendor_repos."""
+    base = tmp_path / "no_vendor"
+    assert summarize_vendor_repos(vendor_base=base) == find_vendor_repos(vendor_base=base)

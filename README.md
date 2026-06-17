@@ -36,6 +36,8 @@ The goal is to demonstrate what rigorous quant research infrastructure looks lik
 | M6 | Experiment registry and local research memory | ✅ |
 | M7 | Research knowledge graph (build, export, query) | ✅ |
 | M8 | Streamlit research dashboard | ✅ |
+| M9 | Repository polish & reproducibility documentation | ✅ |
+| M10 | Dashboard UX overhaul (8 pages, metric explanations, vendor inspirations) | ✅ |
 
 ---
 
@@ -198,15 +200,36 @@ Each command accepts `--help` for full options.
 mosaic dashboard
 ```
 
-Opens a local Streamlit server at `http://localhost:8501` with five pages:
+Opens a local Streamlit server at `http://localhost:8501` with eight pages:
 
 | Page | Content |
 |---|---|
-| Overview | Project description, milestone status, live experiment/graph counts |
-| Experiments | Searchable table of all saved experiments; detail view on selection |
-| Backtest | Latest backtest metrics; full report in an expandable section |
+| Overview | Hero section, live status cards (experiments / graph nodes / reports / latest Sharpe), project summary, milestones |
+| Experiments | Filter by pipeline name or search text; summary table; detail view with plain-English metric explanations |
+| Backtest | Net vs. gross metric split; metric glossary; limitations; full report |
 | Research Graph | Node/edge type counts; searchable node and edge tables |
 | Reports | Browse and view all generated Markdown reports |
+| Architecture | Layer diagram, design-decision notes, link to `docs/architecture.md` |
+| Vendor Inspirations | Per-repo design influence cards with README previews (see below) |
+| Reproduce Demo | Exact Windows + macOS commands to reproduce all results from a fresh clone |
+
+### Vendor Inspirations page
+
+The dashboard includes a **Vendor Inspirations** page that credits four open-source
+repositories that each influenced a specific aspect of MosaicAlpha's design.
+No code was copied; these are design references only.
+
+Clone the repos into a sibling `../vendor/` directory to see README previews in the dashboard:
+
+```bash
+mkdir -p ../vendor && cd ../vendor
+git clone https://github.com/HunterMRocha/agent-reach
+git clone https://github.com/HunterMRocha/G0DM0D3
+git clone https://github.com/HunterMRocha/openhuman
+git clone https://github.com/HunterMRocha/Understand-Anything
+```
+
+See [`docs/vendor_inspirations.md`](docs/vendor_inspirations.md) for the full written attribution.
 
 ---
 
@@ -241,7 +264,7 @@ The directory skeletons (`memory/experiments/.gitkeep`) are tracked so the repos
 ## Testing
 
 ```bash
-python -m pytest            # Run all 210 tests
+python -m pytest            # Run all 224 tests
 python -m pytest -v         # Verbose output
 python -m pytest tests/test_registry.py   # Single module
 ```
