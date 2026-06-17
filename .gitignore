@@ -1,10 +1,16 @@
-# Python
+# ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
 *.pyc
+*.pyo
+*.egg-info/
 .venv/
-.env
 
-# Data
+# ── Secrets and local config ──────────────────────────────────────────────────
+.env
+*.key
+.claude/settings.local.json
+
+# ── Generated data and caches ─────────────────────────────────────────────────
 data/
 *.parquet
 *.duckdb
@@ -13,37 +19,25 @@ data/
 *.csv
 *.jsonl
 
-# Notebooks
-.ipynb_checkpoints/
-
-# Reports generated locally
+# ── Generated reports ─────────────────────────────────────────────────────────
 reports/generated/
 
-# OS/editor
-.DS_Store
-.vscode/
-.idea/
-
-# Experiment registry (generated; keep directory structure, ignore contents)
-memory/experiments/*/
-
-# Secrets
-*.key
-
-# Local Claude settings
-.claude/settings.local.json
-
-# Python packaging metadata
-*.egg-info/
-
-# Generated research memory
+# ── Experiment registry (keep directory skeleton via .gitkeep) ────────────────
 memory/experiments/*
 !memory/experiments/.gitkeep
 
-# Generated graph files (keep examples/)
+# ── Research graph exports ────────────────────────────────────────────────────
 memory/research_graph.json
 memory/research_graph.graphml
-memory/examples/
 
-# Streamlit cache
+# ── Streamlit ─────────────────────────────────────────────────────────────────
 .streamlit/
+
+# ── Notebooks ─────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+
+# ── OS and editor ─────────────────────────────────────────────────────────────
+.DS_Store
+.vscode/
+.idea/
+Thumbs.db

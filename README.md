@@ -1,96 +1,287 @@
 # MosaicAlpha
 
-MosaicAlpha is a local-first alternative-data research workbench for discovering, validating, and explaining quantitative trading signals from noisy public datasets.
+A local-first quantitative research workbench for discovering, validating, and explaining signals from public alternative data.
 
-It combines:
+---
 
-- public data ingestion
-- feature engineering
-- walk-forward validation
-- leakage-aware backtesting
-- alternative-data signal research
-- research memory
-- knowledge-graph-based signal lineage
+## Motivation
 
-The goal is not to build a black-box trading bot. The goal is to demonstrate a rigorous quantitative research workflow: data provenance, statistical validation, transaction-cost-aware backtesting, ablation, and clear communication.
+Most open-source quant projects either stop at a backtest number or hide the entire workflow inside a black box. MosaicAlpha takes a different approach: every stage of the research process — data ingestion, feature engineering, walk-forward validation, transaction-cost-aware backtesting, experiment logging, and lineage tracking — is explicit, testable, and reproducible from a blank machine.
 
-## Milestone 1 — Price-Only Baseline
+The goal is to demonstrate what rigorous quant research infrastructure looks like, not to claim live alpha.
 
-### What the baseline does
+---
 
-The first milestone establishes a price-only research pipeline as a reproducible foundation before any alternative data is introduced.
+## What this project demonstrates
 
-**Data.** Daily OHLCV prices are downloaded via yfinance and cached locally as parquet files.
+- **Walk-forward validation** with strictly non-overlapping train/test splits and no lookahead leakage
+- **Cross-sectional information coefficient (IC)** as the primary signal evaluation metric for panel data
+- **Alternative-data integration** (FRED macro series, GDELT news intensity) with ablation studies comparing price-only vs. price+macro vs. price+news vs. price+macro+news
+- **Transaction-cost-aware backtesting** with explicit turnover tracking and basis-point cost charges
+- **Experiment provenance** via a local file-based registry (JSON, human-readable, Git-friendly)
+- **Research lineage** via a directed knowledge graph linking datasets → features → models → experiments → metrics → limitations
+- **Reproducibility**: a single offline-sample flag removes all network dependencies so the full pipeline can be run on any machine without API keys
 
-**Features.** Seven features are computed from price and volume history, all constructed strictly from information available at the close of day *t* with no forward-looking inputs:
+---
 
-| Feature | Description |
+## Current capabilities
+
+| Milestone | Component | Status |
+|---|---|---|
+| M1 | Price-only SPY baseline (walk-forward ridge) | ✅ |
+| M2 | Sector ETF cross-sectional baseline | ✅ |
+| M3 | FRED macro regime features | ✅ |
+| M4 | GDELT news intensity features (+ offline-sample mode) | ✅ |
+| M5 | Transaction-cost-aware L/S portfolio backtest | ✅ |
+| M6 | Experiment registry and local research memory | ✅ |
+| M7 | Research knowledge graph (build, export, query) | ✅ |
+| M8 | Streamlit research dashboard | ✅ |
+
+---
+
+## Architecture overview
+
+```
+mosaic_alpha/
+├── data/           # Data connectors: yfinance, FRED, GDELT, caching
+├── features/       # Feature families: price, macro, news
+├── research/       # Labels, models, walk-forward validation, metrics,
+│                   # baseline orchestrators, backtest engine, registry
+├── graph/          # Knowledge graph: schema, builder, export, queries
+├── dashboard/      # Streamlit app and pure-Python data helpers
+└── cli.py          # Typer CLI: mosaic <command>
+```
+
+See [`docs/architecture.md`](docs/architecture.md) for a full layer-by-layer description.
+
+---
+
+## Installation
+
+### Prerequisites
+
+- Python 3.11 or later
+- Git
+
+### Windows (PowerShell)
+
+```powershell
+# 1. Clone
+git clone https://github.com/HDMassey/Mosaic-Alpha.git
+cd Mosaic-Alpha
+
+# 2. Create and activate a virtual environment
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+
+# 3. Upgrade pip and install
+python -m pip install --upgrade pip
+pip install -e .
+
+# 4. Verify
+mosaic hello
+python -m pytest
+```
+
+### macOS / Linux
+
+```bash
+# 1. Clone
+git clone https://github.com/HDMassey/Mosaic-Alpha.git
+cd Mosaic-Alpha
+
+# 2. Create and activate a virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# 3. Upgrade pip and install
+pip install --upgrade pip
+pip install -e .
+
+# 4. Verify
+mosaic hello
+python -m pytest
+```
+
+---
+
+## Environment variables
+
+Copy the example file and fill in the values you need:
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Required | Description |
+|---|---|---|
+| `FRED_API_KEY` | Optional | Needed only for live FRED macro pulls. Free at [fred.stlouisfed.org/docs/api/api_key.html](https://fred.stlouisfed.org/docs/api/api_key.html). |
+
+**GDELT** does not require an API key. Use `--offline-sample` to skip live GDELT calls entirely (see below).
+
+The `.env` file is listed in `.gitignore` and is never committed.
+
+---
+
+## Reproducing the demo from a blank machine
+
+The complete sequence below runs the entire pipeline with no API keys and no network calls beyond the initial price download from Yahoo Finance.
+
+```bash
+# Price-only single-asset baseline
+mosaic run-baseline --ticker SPY --start 2015-01-01 --end 2024-12-31
+
+# Cross-sectional sector ETF baseline (price features only)
+mosaic run-sector-baseline --start 2015-01-01 --end 2024-12-31
+
+# Price vs. price+macro comparison (requires FRED_API_KEY for live data;
+# set to offline-sample via --no-fred or use pre-cached series)
+mosaic run-macro-sector --start 2015-01-01 --end 2024-12-31
+
+# 4-way comparison with synthetic news data (no GDELT network calls)
+mosaic run-news-sector --start 2020-01-01 --end 2024-12-31 --offline-sample
+
+# Transaction-cost-aware backtest on the price+macro+news signal
+mosaic run-backtest \
+  --experiment news-sector \
+  --start 2020-01-01 \
+  --end 2024-12-31 \
+  --offline-sample \
+  --cost-bps 5
+
+# Inspect the experiment registry
+mosaic list-experiments
+
+# Build the research knowledge graph
+mosaic build-graph
+
+# Query the graph
+mosaic graph-summary
+mosaic graph-query --dataset GDELT
+mosaic graph-query --metric sharpe_net
+mosaic graph-query --limitation sample
+
+# Launch the local dashboard
+mosaic dashboard
+```
+
+All commands save results to `memory/experiments/` (registry) and `reports/generated/` (Markdown reports). These directories are listed in `.gitignore`.
+
+See [`docs/reproducibility.md`](docs/reproducibility.md) for a full explanation of the offline-sample mode, caching policy, and how to obtain a FRED API key.
+
+---
+
+## Core CLI reference
+
+```
+mosaic hello                    # Smoke test
+mosaic run-baseline             # Price-only SPY baseline
+mosaic run-sector-baseline      # Cross-sectional sector ETF baseline
+mosaic run-macro-sector         # Price vs. price+macro comparison
+mosaic run-news-sector          # 4-way price/macro/news/macro+news comparison
+mosaic run-backtest             # Transaction-cost-aware L/S backtest
+mosaic list-experiments         # List saved experiment records
+mosaic show-experiment <ID>     # Detail view for one experiment
+mosaic build-graph              # Build and export the knowledge graph
+mosaic graph-summary            # Print node/edge counts
+mosaic graph-query              # Query graph by dataset / metric / limitation
+mosaic dashboard                # Launch the Streamlit dashboard
+```
+
+Each command accepts `--help` for full options.
+
+---
+
+## Dashboard
+
+```bash
+mosaic dashboard
+```
+
+Opens a local Streamlit server at `http://localhost:8501` with five pages:
+
+| Page | Content |
 |---|---|
-| `log_return` | Log return: log(close_t / close_{t-1}) |
-| `rolling_vol_5` | 5-day realised volatility (annualised) |
-| `rolling_vol_20` | 20-day realised volatility (annualised) |
-| `momentum_5` | Cumulative log return over the prior 5 trading days |
-| `momentum_20` | Cumulative log return over the prior 20 trading days |
-| `momentum_60` | Cumulative log return over the prior 60 trading days |
-| `volume_zscore_20` | Volume z-score relative to 20-day rolling mean and std |
+| Overview | Project description, milestone status, live experiment/graph counts |
+| Experiments | Searchable table of all saved experiments; detail view on selection |
+| Backtest | Latest backtest metrics; full report in an expandable section |
+| Research Graph | Node/edge type counts; searchable node and edge tables |
+| Reports | Browse and view all generated Markdown reports |
 
-**Labels.** Forward log-return labels are constructed for 1-day, 5-day, and 20-day horizons.
+---
 
-**Validation.** Walk-forward expanding-window splits are used: training sets grow from a minimum of one year; each test fold covers approximately one quarter (63 trading days). No data from the test fold is ever visible during training.
+## Data sources
 
-**Model.** A ridge regression with standard scaling is fit independently on each training fold and evaluated on the held-out test fold.
+| Source | Access | Notes |
+|---|---|---|
+| **Yahoo Finance** | Free, no key | Via `yfinance`; OHLCV prices cached as Parquet files |
+| **FRED** | Free API key | Macro series (Federal Funds Rate, CPI, yield curve, …). Optional — offline macro is not yet supported separately. |
+| **GDELT** | Free, no key | News intensity counts via GDELT GKG API. Use `--offline-sample` to skip live calls. |
 
-**Metrics.** Each fold reports IC (Pearson correlation), rank IC (Spearman correlation), hit rate (directional accuracy), MSE, and a simple long/short decile spread.
+---
 
-### SPY walk-forward results (2015-01-01 to 2024-12-31, 34 folds)
+## Generated files and Git policy
 
-| Label | Mean IC | IC t-stat | Mean Rank IC | Hit Rate | L/S Decile |
-|---|---|---|---|---|---|
-| 1-day forward return  | +0.059 | +2.87 | +0.054 | 51.4% | +0.28% |
-| 5-day forward return  | +0.118 | +3.07 | +0.102 | 51.1% | +1.30% |
-| 20-day forward return | +0.225 | +3.52 | +0.224 | 57.3% | +3.56% |
+The following paths are generated at runtime and are excluded from version control:
 
-Positive IC t-statistics across all horizons indicate that the price features carry statistically detectable signal. Predictive strength increases with horizon, consistent with the well-documented persistence of momentum over intermediate holding periods.
+| Path | Contents |
+|---|---|
+| `data/` | Price Parquet files, GDELT cache |
+| `reports/generated/` | Markdown experiment reports |
+| `memory/experiments/*/` | Experiment registry folders |
+| `memory/research_graph.json` | Exported knowledge graph JSON |
+| `memory/research_graph.graphml` | Exported knowledge graph GraphML |
+| `.streamlit/` | Streamlit server cache |
+| `.env` | Local environment variables |
 
-> **Note.** These results are a validation of the research pipeline, not a trading claim. A single asset, no transaction costs, no slippage, and no position sizing are modelled. The purpose is to confirm that the walk-forward harness is implemented correctly and that features are free of lookahead leakage before any alternative data is layered on top.
+The directory skeletons (`memory/experiments/.gitkeep`) are tracked so the repository clones with the expected structure.
 
-### Tests
+---
 
-14/14 tests pass, covering:
+## Testing
 
-- Timestamp alignment between features, labels, and the source price index.
-- Correctness of forward-return label offsets at every row.
-- No lookahead leakage in log returns, rolling statistics, or momentum features.
-- Strict disjointness and temporal ordering of train and test sets across all folds.
+```bash
+python -m pytest            # Run all 210 tests
+python -m pytest -v         # Verbose output
+python -m pytest tests/test_registry.py   # Single module
+```
 
-Run the test suite with:
+The test suite covers:
 
-    pytest
+- Timestamp alignment and lookahead leakage (features and labels)
+- Walk-forward split correctness
+- Cross-sectional IC computation
+- Macro feature construction
+- News feature construction (offline-sample mode)
+- Backtest weight construction, turnover, and P&L
+- Experiment registry round-trips
+- Knowledge graph schema, builder, export, and queries
+- Dashboard helper functions
 
-## Project structure
+---
 
-- `mosaic_alpha/data`: data connectors and cache logic
-- `mosaic_alpha/features`: feature engineering
-- `mosaic_alpha/research`: labels, models, validation, backtests, metrics
-- `mosaic_alpha/graph`: research knowledge graph
-- `mosaic_alpha/llm`: optional LLM-assisted research review
-- `mosaic_alpha/dashboard`: Streamlit dashboard
+## Limitations
 
-## Development
+- The universe is restricted to 11 SPDR sector ETFs. Cross-sectional IC is statistically weak at this size.
+- All model results are in-sample to the walk-forward framework; they have not been validated on a held-out out-of-sample period.
+- GDELT news intensity is a raw count proxy; it captures volume of coverage, not sentiment.
+- FRED macro data introduces point-in-time issues that are not fully corrected (series are available with publication lag).
+- No market-impact model. Transaction costs are a flat basis-point charge on one-way turnover.
+- Short selling is assumed frictionless beyond the explicit cost charge.
+- These results do not constitute a trading strategy recommendation.
 
-Create and activate the environment:
+See [`docs/results.md`](docs/results.md) for a candid summary of all experiment results.
 
-    python -m venv .venv
-    .venv\Scripts\Activate.ps1
+---
 
-Install the project:
+## Roadmap
 
-    pip install -e .
+See [`docs/roadmap.md`](docs/roadmap.md).
 
-Run tests:
+---
 
-    pytest
+## License and disclaimer
 
-Run the CLI smoke test:
+This project is released for educational and research purposes.
 
-    mosaic hello
+**Nothing in this repository constitutes financial or investment advice.** All backtest results are historical simulations. Past performance of a research pipeline does not imply future trading profitability.
