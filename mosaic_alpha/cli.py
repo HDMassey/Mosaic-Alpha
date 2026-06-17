@@ -992,5 +992,246 @@ def _print_metrics(metrics: dict, indent: str = "") -> None:
             console.print(f"{indent}[dim]{key}:[/dim] {value}")
 
 
+# ── Graph commands ─────────────────────────────────────────────────────────────
+
+@app.command("build-graph")
+def build_graph_cmd(
+    registry_root: Path = typer.Option(
+        Path("memory/experiments"),
+        "--registry-root",
+        help="Root directory of the experiment registry.",
+    ),
+    json_path: Path = typer.Option(
+        Path("memory/research_graph.json"),
+        "--json-path",
+        help="Output path for the JSON graph export.",
+    ),
+    graphml_path: Path = typer.Option(
+        Path("memory/research_graph.graphml"),
+        "--graphml-path",
+        help="Output path for the GraphML export.",
+    ),
+    no_graphml: bool = typer.Option(
+        False,
+        "--no-graphml",
+        help="Skip the GraphML export (JSON only).",
+    ),
+) -> None:
+    """Build the research knowledge graph from saved experiments and export it.
+
+    Reads all experiment records from the local registry, constructs a directed
+    graph of datasets → experiments → features / models / metrics / reports /
+    limitations, and writes it to JSON (always) and GraphML (if networkx is
+    available and --no-graphml is not set).
+    """
+    from mosaic_alpha.graph.builder import build_graph
+    from mosaic_alpha.graph.export import export_all, export_json
+
+    records_root = Path(registry_root)
+    console.print(f"[bold cyan]MosaicAlpha Build Graph[/bold cyan] | registry: {records_root}")
+
+    graph = build_graph(registry_root=records_root)
+    summary = graph.summary()
+
+    console.print(
+        f"[dim]Built graph: {summary['total_nodes']} nodes, "
+        f"{summary['total_edges']} edges[/dim]"
+    )
+
+    if no_graphml:
+        out = export_json(graph, json_path)
+        console.print(f"[green]Graph JSON written to[/green] {out}")
+    else:
+        paths = export_all(graph, json_path=json_path, graphml_path=graphml_path)
+        console.print(f"[green]Graph JSON written to[/green] {paths['json']}")
+        if paths["graphml"]:
+            console.print(f"[green]Graph GraphML written to[/green] {paths['graphml']}")
+        else:
+            console.print("[dim]GraphML skipped (networkx unavailable or error).[/dim]")
+
+    # Print a summary table
+    table = Table(title="Graph Summary", show_lines=True)
+    table.add_column("Node / Edge Type", style="bold")
+    table.add_column("Count", justify="right")
+
+    for ntype, count in sorted(summary.get("nodes_by_type", {}).items()):
+        table.add_row(f"node: {ntype}", str(count))
+    for etype, count in sorted(summary.get("edges_by_type", {}).items()):
+        table.add_row(f"edge: {etype}", str(count))
+
+    console.print(table)
+
+
+@app.command("graph-summary")
+def graph_summary_cmd(
+    json_path: Path = typer.Option(
+        Path("memory/research_graph.json"),
+        "--json-path",
+        help="Path to the exported JSON graph.",
+    ),
+    registry_root: Path = typer.Option(
+        Path("memory/experiments"),
+        "--registry-root",
+        help="Registry root (used to build graph on-the-fly if JSON not found).",
+    ),
+) -> None:
+    """Print a summary of the research knowledge graph.
+
+    Loads the graph from the JSON export (or builds it live from the registry
+    if the JSON file does not exist yet).
+    """
+    import json as _json
+
+    from mosaic_alpha.graph.builder import build_graph
+    from mosaic_alpha.graph.schema import GraphEdge, GraphNode, ResearchGraph
+
+    if Path(json_path).exists():
+        data = _json.loads(Path(json_path).read_text(encoding="utf-8"))
+        graph = ResearchGraph(
+            nodes=[GraphNode(**n) for n in data.get("nodes", [])],
+            edges=[GraphEdge(**e) for e in data.get("edges", [])],
+        )
+        console.print(f"[dim]Loaded graph from[/dim] {json_path}")
+    else:
+        console.print(f"[dim]{json_path} not found — building graph from registry...[/dim]")
+        graph = build_graph(registry_root=registry_root)
+
+    summary = graph.summary()
+
+    table = Table(title="Research Knowledge Graph Summary", show_lines=True)
+    table.add_column("Category", style="bold")
+    table.add_column("Count", justify="right")
+
+    table.add_row("[bold]Total nodes[/bold]", str(summary["total_nodes"]))
+    table.add_row("[bold]Total edges[/bold]", str(summary["total_edges"]))
+
+    for ntype, count in sorted(summary.get("nodes_by_type", {}).items()):
+        table.add_row(f"  node: {ntype}", str(count))
+    for etype, count in sorted(summary.get("edges_by_type", {}).items()):
+        table.add_row(f"  edge: {etype}", str(count))
+
+    console.print(table)
+
+
+@app.command("graph-query")
+def graph_query_cmd(
+    dataset: str = typer.Option(
+        "",
+        "--dataset",
+        help="Find experiments that used this dataset (e.g. GDELT, FRED, yfinance).",
+    ),
+    metric: str = typer.Option(
+        "",
+        "--metric",
+        help="Find experiments ranked by this metric (e.g. sharpe_net, mean_ic).",
+    ),
+    limitation: str = typer.Option(
+        "",
+        "--limitation",
+        help="Find experiments whose limitations contain this keyword.",
+    ),
+    top_n: int = typer.Option(
+        5,
+        "--top-n",
+        help="Maximum results to return for --metric queries.",
+    ),
+    registry_root: Path = typer.Option(
+        Path("memory/experiments"),
+        "--registry-root",
+        help="Registry root (used to build graph on-the-fly).",
+    ),
+    json_path: Path = typer.Option(
+        Path("memory/research_graph.json"),
+        "--json-path",
+        help="Pre-built JSON graph (used if it exists).",
+    ),
+) -> None:
+    """Query the research knowledge graph.
+
+    Exactly one of --dataset, --metric, or --limitation must be provided.
+
+    Examples
+    --------
+        mosaic graph-query --dataset GDELT
+        mosaic graph-query --metric sharpe_net
+        mosaic graph-query --limitation sample
+    """
+    import json as _json
+
+    from mosaic_alpha.graph.builder import build_graph
+    from mosaic_alpha.graph.queries import (
+        find_best_experiments_by_metric,
+        find_experiments_using_dataset,
+        find_experiments_with_limitation,
+    )
+    from mosaic_alpha.graph.schema import GraphEdge, GraphNode, ResearchGraph
+
+    n_opts = sum(bool(x) for x in [dataset, metric, limitation])
+    if n_opts == 0:
+        console.print("[red]Provide exactly one of --dataset, --metric, or --limitation.[/red]")
+        raise SystemExit(1)
+    if n_opts > 1:
+        console.print("[red]Only one of --dataset, --metric, --limitation may be used at a time.[/red]")
+        raise SystemExit(1)
+
+    # Load or build graph
+    if Path(json_path).exists():
+        data = _json.loads(Path(json_path).read_text(encoding="utf-8"))
+        graph = ResearchGraph(
+            nodes=[GraphNode(**n) for n in data.get("nodes", [])],
+            edges=[GraphEdge(**e) for e in data.get("edges", [])],
+        )
+    else:
+        console.print(f"[dim]{json_path} not found — building graph from registry...[/dim]")
+        graph = build_graph(registry_root=registry_root)
+
+    if dataset:
+        results = find_experiments_using_dataset(graph, dataset)
+        if not results:
+            console.print(f"[yellow]No experiments found using dataset:[/yellow] {dataset!r}")
+            return
+        table = Table(title=f"Experiments using dataset: {dataset!r}", show_lines=True)
+        table.add_column("Experiment ID", style="dim")
+        table.add_column("Name", style="bold")
+        table.add_column("Window")
+        for r in results:
+            table.add_row(r["experiment_id"], r["name"], f"{r['start_date']} → {r['end_date']}")
+        console.print(table)
+
+    elif metric:
+        results = find_best_experiments_by_metric(graph, metric, top_n=top_n)
+        if not results:
+            console.print(f"[yellow]No metric found matching:[/yellow] {metric!r}")
+            return
+        table = Table(title=f"Top experiments by metric: {metric!r}", show_lines=True)
+        table.add_column("Rank", justify="right")
+        table.add_column("Experiment ID", style="dim")
+        table.add_column("Name", style="bold")
+        table.add_column("Metric", style="dim")
+        table.add_column("Value", justify="right")
+        for i, r in enumerate(results, 1):
+            table.add_row(
+                str(i),
+                r["experiment_id"],
+                r["name"],
+                r["metric_label"],
+                f"{r['value']:+.6f}",
+            )
+        console.print(table)
+
+    elif limitation:
+        results = find_experiments_with_limitation(graph, limitation)
+        if not results:
+            console.print(f"[yellow]No experiments found with limitation containing:[/yellow] {limitation!r}")
+            return
+        table = Table(title=f"Experiments with limitation containing: {limitation!r}", show_lines=True)
+        table.add_column("Experiment ID", style="dim")
+        table.add_column("Name", style="bold")
+        table.add_column("Limitation")
+        for r in results:
+            table.add_row(r["experiment_id"], r["name"], r["limitation"])
+        console.print(table)
+
+
 if __name__ == "__main__":
     app()

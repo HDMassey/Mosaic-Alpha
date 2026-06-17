@@ -39,3 +39,8 @@ memory/experiments/*/
 # Generated research memory
 memory/experiments/*
 !memory/experiments/.gitkeep
+
+# Generated graph files (keep examples/)
+memory/research_graph.json
+memory/research_graph.graphml
+memory/examples/
